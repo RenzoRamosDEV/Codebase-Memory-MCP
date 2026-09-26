@@ -3,6 +3,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useProjects } from "../hooks/useProjects";
 import { colorForLabel } from "../lib/colors";
 import { useUiMessages } from "../lib/i18n";
+import type { Project, SchemaInfo } from "../lib/types";
 
 interface StatsTabProps {
   onSelectProject: (project: string) => void;
@@ -54,7 +55,7 @@ function HealthDot({ name }: { name: string }) {
       />
       {/* Tooltip */}
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block z-20 pointer-events-none">
-        <div className="bg-[#0b1920] border border-border/50 rounded-lg px-3 py-2 text-[11px] whitespace-nowrap shadow-xl">
+        <div className="bg-card border border-border/50 rounded-lg px-3 py-2 text-[11px] whitespace-nowrap shadow-xl">
           <p className="font-medium" style={{ color: dotColor }}>{label}</p>
           {info && <p className="text-foreground/35 text-[10px] mt-0.5">{info}</p>}
         </div>
@@ -117,7 +118,7 @@ function AdrButton({ project }: { project: string }) {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative bg-[#0e2028] border border-border/40 rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="relative bg-card border border-border/40 rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-[15px] font-semibold text-foreground/90">{t.adr.title}</h3>
@@ -166,7 +167,7 @@ function joinPath(base: string, dir: string): string {
   return `${base.replace(/[\\/]+$/, "")}${slash}${dir}`;
 }
 
-function CreateIndexModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateIndexModal({ onClose, onCreated }: { onClose: () => void; onCreated: (label: string) => void }) {
   const t = useUiMessages();
   const [currentPath, setCurrentPath] = useState("");
   const [dirs, setDirs] = useState<string[]>([]);
@@ -237,7 +238,7 @@ function CreateIndexModal({ onClose, onCreated }: { onClose: () => void; onCreat
       const res = await fetch("/api/index", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
-      onCreated(); onClose();
+      onCreated(projectName.trim() || basename(path)); onClose();
     } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
     finally { setSubmitting(false); }
   };
@@ -288,7 +289,7 @@ function CreateIndexModal({ onClose, onCreated }: { onClose: () => void; onCreat
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative bg-[#0e2028] border border-border/40 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col overflow-hidden" style={{ height: "min(82vh, 680px)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="relative bg-card border border-border/40 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col overflow-hidden" style={{ height: "min(82vh, 680px)" }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="px-5 pt-5 pb-3 shrink-0">
           <h3 className="text-[15px] font-semibold text-foreground/90 mb-1">{t.index.selectRepositoryFolder}</h3>
@@ -362,7 +363,7 @@ function CreateIndexModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
         {/* Directory list */}
         <ScrollArea className="flex-1 min-h-0">
-          <div className="px-2 py-1">
+          <div className="px-2 py-1" data-testid="browse-list">
             {/* Go up */}
             {currentPath !== "/" && (
               <button
@@ -427,7 +428,13 @@ function CreateIndexModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
 /* ── Index Progress ─────────────────────────────────────── */
 
-export function IndexProgress({ onDone }: { onDone: () => void }) {
+function basename(path: string): string {
+  const cleaned = path.replace(/[\\/]+$/, "");
+  const parts = cleaned.split(/[\\/]/);
+  return parts[parts.length - 1] || cleaned;
+}
+
+export function IndexProgress({ onDone, pendingLabel }: { onDone: () => void; pendingLabel?: string | null }) {
   const t = useUiMessages();
   const [jobs, setJobs] = useState<{ slot: number; status: string; path: string; error?: string }[]>([]);
   const [hasActive, setHasActive] = useState(true);
@@ -458,39 +465,174 @@ export function IndexProgress({ onDone }: { onDone: () => void }) {
   const active = jobs.filter((j) => j.status === "indexing");
   const errors = jobs.filter((j) => j.status === "error");
 
-  if (active.length === 0 && errors.length === 0) return null;
+  if (active.length === 0 && errors.length === 0) {
+    /* Nothing back from the first poll yet — show the window right away with
+     * what we already know (the folder the click just started indexing)
+     * instead of a 2s blank gap. */
+    if (!pendingLabel) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+        <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <div className="flex items-center gap-3.5">
+            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin shrink-0" />
+            <div className="min-w-0">
+              <p className="font-serif text-[15px] font-semibold text-foreground">Indexando proyecto: {pendingLabel}</p>
+              <p className="text-[11px] text-primary font-medium mt-0.5">{t.projects.indexingInProgress}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-6">
-      {active.map((j) => (
-        <div key={j.slot} className="flex items-center gap-3">
-          <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin shrink-0" />
-          <div>
-            <p className="text-[12px] text-primary font-medium">{t.projects.indexingInProgress}</p>
-            <p className="text-[11px] text-foreground/30 font-mono">{j.path}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        {active.map((j) => (
+          <div key={j.slot} className="flex items-center gap-3.5">
+            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin shrink-0" />
+            <div className="min-w-0">
+              <p className="font-serif text-[15px] font-semibold text-foreground">
+                Indexando proyecto: {basename(j.path)}
+              </p>
+              <p className="text-[11px] text-primary font-medium mt-0.5">{t.projects.indexingInProgress}</p>
+              <p className="text-[11px] text-muted-foreground font-mono truncate mt-1">{j.path}</p>
+            </div>
+          </div>
+        ))}
+        {errors.map((j) => (
+          <div key={j.slot} className="flex items-start gap-3 mt-3 first:mt-0 p-3 rounded-lg border border-destructive/20 bg-destructive/5 text-destructive">
+            <span className="text-[14px]">⚠️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-semibold">{t.projects.indexingFailed}</p>
+              <p className="text-[11px] font-mono truncate">{j.path}</p>
+              {j.error && <p className="text-[10px] opacity-75 mt-1 font-mono">{j.error}</p>}
+            </div>
+          </div>
+        ))}
+        {errors.length > 0 && (
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={onDone}
+              className="px-3 py-1.5 rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive text-[11px] font-medium transition-all"
+            >
+              {t.common.dismiss}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Folder scan: everything under PROJECTS_ROOT, indexed or not ── */
+
+/* Personal setting: the folder this fork always scans for repositories.
+ * Edit this if your projects live somewhere else. */
+const PROJECTS_ROOT = "/home/renzo/Proyectos";
+
+type ProjectEntry = { project: Project; schema: SchemaInfo | null };
+
+function normalizePath(path: string): string {
+  let p = path.replace(/[\\/]+$/, "");
+  /* On ostree-style distros (Fedora Silverblue/CoreOS, this box included) /home
+   * is a symlink to /var/home — the backend stores the resolved /var/home/...
+   * path while browsing gives back /home/...; treat them as the same folder. */
+  if (p.startsWith("/var/home/") || p === "/var/home") p = p.slice(4);
+  return p;
+}
+
+/* One row: an indexed project (health dot, chips, stats, actions). Used both
+ * for entries found under PROJECTS_ROOT and for indexed projects that live
+ * elsewhere. */
+function IndexedRow({
+  p,
+  onSelectProject,
+  onDelete,
+}: {
+  p: ProjectEntry;
+  onSelectProject: (name: string) => void;
+  onDelete: (name: string) => void;
+}) {
+  const totalNodes = p.schema?.node_labels?.reduce((s, l) => s + l.count, 0) ?? 0;
+  const totalEdges = p.schema?.edge_types?.reduce((s, t) => s + t.count, 0) ?? 0;
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-3.5 min-w-0">
+      <div className="flex items-start justify-between gap-3 min-w-0">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <div className="pt-1 shrink-0"><HealthDot name={p.project.name} /></div>
+          <div className="min-w-0 flex flex-col gap-0.5">
+            <span className="font-serif text-[14px] font-semibold truncate">{p.project.name}</span>
+            <span className="font-mono text-[11px] text-muted-foreground truncate block">{p.project.root_path}</span>
           </div>
         </div>
-      ))}
-      {errors.map((j) => (
-        <div key={j.slot} className="flex items-start gap-3 mt-3 first:mt-0 p-3 rounded-lg border border-destructive/20 bg-destructive/5 text-destructive">
-          <span className="text-[14px]">⚠️</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-semibold">{t.projects.indexingFailed}</p>
-            <p className="text-[11px] font-mono truncate">{j.path}</p>
-            {j.error && <p className="text-[10px] opacity-75 mt-1 font-mono">{j.error}</p>}
-          </div>
-        </div>
-      ))}
-      {errors.length > 0 && (
-        <div className="flex justify-end mt-3">
-          <button
-            onClick={onDone}
-            className="px-3 py-1 rounded bg-destructive/10 hover:bg-destructive/20 text-destructive text-[11px] font-medium transition-all"
+        <button onClick={() => onDelete(p.project.name)} className="w-6 h-6 rounded-md hover:bg-destructive/10 text-muted-foreground/50 hover:text-destructive text-[12px] transition-all shrink-0" title="Eliminar índice">
+          ✕
+        </button>
+      </div>
+
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+        {p.schema?.node_labels?.map((l) => (
+          <span
+            key={l.label}
+            title={`${l.label} ${l.count.toLocaleString()}`}
+            className="inline-flex items-center justify-between gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold overflow-hidden"
+            style={{ backgroundColor: colorForLabel(l.label) + "1a", color: colorForLabel(l.label) }}
           >
-            {t.common.dismiss}
+            <span className="truncate">{l.label}</span>
+            <span className="tabular-nums shrink-0 opacity-70">{l.count.toLocaleString()}</span>
+          </span>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/40 mt-auto">
+        <span className="font-mono text-[11px] text-muted-foreground/80 tabular-nums truncate">
+          {totalNodes.toLocaleString()} nodos · {totalEdges.toLocaleString()} aristas
+        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <AdrButton project={p.project.name} />
+          <button onClick={() => onSelectProject(p.project.name)} className="text-primary text-[12px] font-semibold hover:underline whitespace-nowrap">
+            Ver grafo →
           </button>
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+/* One card: a folder under PROJECTS_ROOT that has not been indexed yet. */
+function UnindexedRow({
+  name,
+  fullPath,
+  indexing,
+  onIndex,
+}: {
+  name: string;
+  fullPath: string;
+  indexing: boolean;
+  onIndex: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-3.5 min-w-0">
+      <div className="flex items-start gap-2.5 min-w-0">
+        <span className="w-[9px] h-[9px] rounded-full bg-muted-foreground/25 shrink-0 mt-[5px]" />
+        <div className="min-w-0 flex flex-col gap-0.5">
+          <span className="font-serif text-[14px] font-semibold text-foreground/60 truncate">{name}</span>
+          <span className="font-mono text-[11px] text-muted-foreground truncate block">{fullPath}</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/40 mt-auto">
+        <span className="text-[11px] text-muted-foreground/60">Sin indexar</span>
+        <button
+          onClick={onIndex}
+          disabled={indexing}
+          className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-[12px] font-semibold transition-all disabled:opacity-40 whitespace-nowrap shrink-0"
+        >
+          {indexing ? "Indexando…" : "Indexar"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -502,6 +644,46 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
   const { projects, loading, error, refresh } = useProjects();
   const [showModal, setShowModal] = useState(false);
   const [indexing, setIndexing] = useState(false);
+
+  const [scanDirs, setScanDirs] = useState<string[] | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanLoading, setScanLoading] = useState(true);
+  const [scanVersion, setScanVersion] = useState(0);
+  const [indexingPath, setIndexingPath] = useState<string | null>(null);
+  const [indexingLabel, setIndexingLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setScanLoading(true);
+    fetch(`/api/browse?path=${encodeURIComponent(PROJECTS_ROOT)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d.error) { setScanError(d.error); setScanDirs([]); }
+        else { setScanError(null); setScanDirs((d.dirs ?? []).sort()); }
+      })
+      .catch(() => { if (!cancelled) { setScanError(`No se pudo leer ${PROJECTS_ROOT}`); setScanDirs([]); } })
+      .finally(() => { if (!cancelled) setScanLoading(false); });
+    return () => { cancelled = true; };
+  }, [scanVersion]);
+
+  const indexedByPath = useMemo(() => {
+    const m = new Map<string, ProjectEntry>();
+    for (const p of projects) m.set(normalizePath(p.project.root_path), p);
+    return m;
+  }, [projects]);
+
+  const folderEntries = useMemo(() => {
+    return (scanDirs ?? []).map((name) => {
+      const fullPath = joinPath(PROJECTS_ROOT, name);
+      return { name, fullPath, indexed: indexedByPath.get(normalizePath(fullPath)) ?? null };
+    });
+  }, [scanDirs, indexedByPath]);
+
+  const otherIndexed = useMemo(() => {
+    const scannedPaths = new Set(folderEntries.map((f) => normalizePath(f.fullPath)));
+    return projects.filter((p) => !scannedPaths.has(normalizePath(p.project.root_path)));
+  }, [projects, folderEntries]);
 
   const aggregate = useMemo(() => {
     let totalNodes = 0, totalEdges = 0;
@@ -517,9 +699,29 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
     try { await fetch(`/api/project?name=${encodeURIComponent(name)}`, { method: "DELETE" }); refresh(); } catch { /* */ }
   }, [refresh, t.projects]);
 
+  const indexFolder = useCallback(async (fullPath: string, name: string) => {
+    setIndexingPath(fullPath);
+    try {
+      const res = await fetch("/api/index", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root_path: fullPath, project_name: name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setIndexingLabel(name);
+      setIndexing(true);
+      refresh();
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : "No se pudo indexar");
+    } finally {
+      setIndexingPath(null);
+    }
+  }, [refresh]);
+
   return (
     <ScrollArea className="h-full">
-      <div className="p-8 max-w-3xl mx-auto">
+      <div className="p-7">
         {projects.length > 0 && (
           <div className="flex gap-4 mb-8">
             {[
@@ -527,75 +729,84 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
               { label: t.projects.nodes, value: aggregate.nodes, color: "text-foreground/80" },
               { label: t.projects.edges, value: aggregate.edges, color: "text-foreground/80" },
             ].map((s) => (
-              <div key={s.label} className="flex-1 rounded-xl border border-border/30 bg-white/[0.02] p-4">
-                <p className="text-[10px] text-foreground/25 uppercase tracking-widest mb-1">{s.label}</p>
-                <p className={`text-[22px] font-semibold tabular-nums ${s.color}`}>{s.value.toLocaleString()}</p>
+              <div key={s.label} className="flex-1 rounded-2xl border border-border bg-card p-4">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">{s.label}</p>
+                <p className={`font-serif text-[26px] font-semibold tabular-nums ${s.color}`}>{s.value.toLocaleString()}</p>
               </div>
             ))}
           </div>
         )}
 
-        {indexing && <IndexProgress onDone={() => { setIndexing(false); refresh(); }} />}
+        {indexing && (
+          <IndexProgress
+            pendingLabel={indexingLabel}
+            onDone={() => { setIndexing(false); setIndexingLabel(null); refresh(); }}
+          />
+        )}
 
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-[15px] font-semibold text-foreground/80">{t.projects.indexedProjects}</h2>
+        {/* Everything found under PROJECTS_ROOT, indexed or not */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-serif text-[16px] font-semibold">
+            Proyectos en <span className="font-mono text-[13px] text-muted-foreground">{PROJECTS_ROOT}</span>
+          </h2>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowModal(true)} className="px-3 py-1.5 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">+ {t.index.newIndex}</button>
-            <button onClick={refresh} disabled={loading} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-foreground/40 font-medium transition-all disabled:opacity-30">{loading ? "..." : t.common.refresh}</button>
+            <button onClick={() => setShowModal(true)} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-muted-foreground font-medium transition-all">+ {t.index.newIndex}</button>
+            <button onClick={() => setScanVersion((v) => v + 1)} disabled={scanLoading} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-muted-foreground font-medium transition-all disabled:opacity-30">
+              {scanLoading ? "..." : t.common.refresh}
+            </button>
           </div>
+        </div>
+
+        {scanError && (
+          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 mb-6"><p className="text-destructive text-[13px]">{scanError}</p></div>
+        )}
+
+        {!scanLoading && folderEntries.length === 0 && !scanError && (
+          <p className="text-muted-foreground/60 text-[12px] py-6">No hay carpetas en {PROJECTS_ROOT}</p>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-10">
+          {folderEntries.map((entry) =>
+            entry.indexed ? (
+              <IndexedRow key={entry.fullPath} p={entry.indexed} onSelectProject={onSelectProject} onDelete={deleteProject} />
+            ) : (
+              <UnindexedRow
+                key={entry.fullPath}
+                name={entry.name}
+                fullPath={entry.fullPath}
+                indexing={indexingPath === entry.fullPath}
+                onIndex={() => indexFolder(entry.fullPath, entry.name)}
+              />
+            ),
+          )}
         </div>
 
         {error && <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 mb-6"><p className="text-destructive text-[13px]">{error}</p></div>}
 
-        {!loading && projects.length === 0 && !error && (
+        {otherIndexed.length > 0 && (
+          <>
+            <h2 className="font-serif text-[16px] font-semibold mb-3">Otros proyectos indexados</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {otherIndexed.map((p) => (
+                <IndexedRow key={p.project.name} p={p} onSelectProject={onSelectProject} onDelete={deleteProject} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {!loading && projects.length === 0 && folderEntries.length === 0 && !error && !scanError && (
           <div className="text-center py-20">
             <p className="text-foreground/25 text-[13px] mb-2">{t.projects.noIndexedProjects}</p>
             <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">{t.projects.indexFirstRepository}</button>
           </div>
         )}
-
-        <div className="space-y-3">
-          {projects.map((p) => {
-            const totalNodes = p.schema?.node_labels?.reduce((s, l) => s + l.count, 0) ?? 0;
-            const totalEdges = p.schema?.edge_types?.reduce((s, t) => s + t.count, 0) ?? 0;
-            return (
-              <div key={p.project.name} className="rounded-xl border border-border/30 bg-white/[0.02] hover:bg-white/[0.035] transition-all p-5">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="min-w-0 flex items-start gap-2.5">
-                    <div className="mt-1.5"><HealthDot name={p.project.name} /></div>
-                    <div className="min-w-0">
-                      <h3 className="text-[14px] font-semibold text-foreground/90 mb-0.5">{p.project.name}</h3>
-                      <p className="text-[11px] text-foreground/20 font-mono truncate">{p.project.root_path}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <AdrButton project={p.project.name} />
-                    <button onClick={() => onSelectProject(p.project.name)} className="px-3 py-1.5 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">{t.projects.viewGraph}</button>
-                    <button onClick={() => deleteProject(p.project.name)} className="px-2 py-1.5 rounded-lg hover:bg-destructive/10 text-foreground/20 hover:text-destructive text-[12px] transition-all" title={t.projects.deleteTitle}>✕</button>
-                  </div>
-                </div>
-                {p.schema && (
-                  <>
-                    <div className="flex gap-6 text-[12px] text-foreground/30 mb-3">
-                      <span><strong className="text-foreground/55 tabular-nums">{totalNodes.toLocaleString()}</strong> {t.projects.nodes}</span>
-                      <span><strong className="text-foreground/55 tabular-nums">{totalEdges.toLocaleString()}</strong> {t.projects.edges}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {p.schema.node_labels?.map((l) => (
-                        <span key={l.label} className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded-md text-[10px] font-medium" style={{ backgroundColor: colorForLabel(l.label) + "10", color: colorForLabel(l.label) + "bb" }}>
-                          <span className="w-[4px] h-[4px] rounded-full" style={{ backgroundColor: colorForLabel(l.label) }} />
-                          {l.label} {l.count.toLocaleString()}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
       </div>
-      {showModal && <CreateIndexModal onClose={() => setShowModal(false)} onCreated={() => { setIndexing(true); refresh(); }} />}
+      {showModal && (
+        <CreateIndexModal
+          onClose={() => setShowModal(false)}
+          onCreated={(label) => { setIndexingLabel(label); setIndexing(true); refresh(); setScanVersion((v) => v + 1); }}
+        />
+      )}
     </ScrollArea>
   );
 }

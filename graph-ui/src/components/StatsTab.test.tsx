@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatsTab, IndexProgress } from "./StatsTab";
 import { messages } from "../lib/i18n";
@@ -61,7 +61,7 @@ describe("StatsTab index modal", () => {
     });
 
     render(<StatsTab onSelectProject={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New Index" }));
 
     fireEvent.change(await screen.findByLabelText("Repository path"), {
       target: { value: "D:\\work\\信租风控通后端" },
@@ -83,14 +83,15 @@ describe("StatsTab index modal", () => {
     mockProjectsFetch();
 
     render(<StatsTab onSelectProject={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New Index" }));
 
     fireEvent.change(await screen.findByPlaceholderText("Filter folders"), {
       target: { value: "bet" },
     });
 
-    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
-    expect(screen.getByText("beta")).toBeInTheDocument();
+    const list = within(screen.getByTestId("browse-list"));
+    expect(list.queryByText("alpha")).not.toBeInTheDocument();
+    expect(list.getByText("beta")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Index beta" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Browse D:/" })).toBeInTheDocument();
   });
@@ -109,7 +110,7 @@ describe("StatsTab index modal", () => {
     });
 
     render(<StatsTab onSelectProject={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New Index" }));
 
     /* No bogus unified "/" root crumb on a Windows drive path. */
     await screen.findByRole("button", { name: "C:" });
@@ -145,7 +146,7 @@ describe("StatsTab index modal", () => {
     });
 
     render(<StatsTab onSelectProject={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New Index" }));
 
     /* Initial C: listing is shown. */
     expect(await screen.findByText("Documents")).toBeInTheDocument();
@@ -155,8 +156,9 @@ describe("StatsTab index modal", () => {
       target: { value: "D:/" },
     });
 
-    expect(await screen.findByText("projects")).toBeInTheDocument();
-    expect(screen.queryByText("Documents")).not.toBeInTheDocument();
+    const list = within(screen.getByTestId("browse-list"));
+    expect(await list.findByText("projects")).toBeInTheDocument();
+    expect(list.queryByText("Documents")).not.toBeInTheDocument();
   });
 
   it("replaces the meaningless '/' root with the drive on Windows", async () => {
@@ -175,7 +177,7 @@ describe("StatsTab index modal", () => {
     });
 
     render(<StatsTab onSelectProject={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New Index" }));
 
     /* The bogus "/" quick-jump is gone; the current drive root is offered. */
     expect(await screen.findByRole("button", { name: "Browse C:/" })).toBeInTheDocument();
@@ -192,8 +194,8 @@ describe("StatsTab index modal", () => {
     const fetchMock = mockProjectsFetch(); // browse returns POSIX path "/home/dev"
 
     render(<StatsTab onSelectProject={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Index your first repository" }));
-    await screen.findByText("alpha"); // initial POSIX listing
+    fireEvent.click(await screen.findByRole("button", { name: "+ New Index" }));
+    await within(screen.getByTestId("browse-list")).findByText("alpha"); // initial POSIX listing
 
     const browseCalls = () =>
       fetchMock.mock.calls.filter((c) => String(c[0]).startsWith("/api/browse")).length;

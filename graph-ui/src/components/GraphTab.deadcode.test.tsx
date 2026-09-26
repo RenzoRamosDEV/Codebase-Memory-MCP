@@ -57,6 +57,9 @@ describe("GraphTab dead-code filters", () => {
     /* Both nodes visible initially — no "filtered from" notice. */
     expect(screen.queryByText(/filtered from/)).not.toBeInTheDocument();
 
+    /* The Dead code section is collapsed by default — expand it first. */
+    fireEvent.click(screen.getByRole("button", { name: /Dead code/ }));
+
     /* Toggling "Show only dead code" hides the non-dead node. */
     fireEvent.click(screen.getByRole("button", { name: /Show only dead code/ }));
     expect(await screen.findByText(/filtered from 2/)).toBeInTheDocument();

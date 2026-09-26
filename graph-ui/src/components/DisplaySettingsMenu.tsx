@@ -98,7 +98,7 @@ export function DisplaySettingsMenu({
         <div
           role="dialog"
           aria-label="Display settings"
-          className="absolute top-10 right-0 w-64 p-4 rounded-lg border border-border/60 bg-[#0b1920]/95 backdrop-blur-md shadow-xl z-20 space-y-3.5"
+          className="absolute top-10 right-0 w-64 p-4 rounded-lg border border-border/60 bg-card/95 backdrop-blur-md shadow-xl z-20 space-y-3.5"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-foreground/50 uppercase tracking-widest">

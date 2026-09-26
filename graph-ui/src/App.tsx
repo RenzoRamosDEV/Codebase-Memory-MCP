@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Waypoints, FolderGit2, SlidersHorizontal } from "lucide-react";
 import { GraphTab } from "./components/GraphTab";
 import { StatsTab } from "./components/StatsTab";
 import { ControlTab } from "./components/ControlTab";
@@ -6,6 +7,11 @@ import type { TabId } from "./lib/types";
 import { useUiMessages } from "./lib/i18n";
 
 const TAB_IDS: TabId[] = ["graph", "stats", "control"];
+const TAB_ICONS: Record<TabId, typeof Waypoints> = {
+  graph: Waypoints,
+  stats: FolderGit2,
+  control: SlidersHorizontal,
+};
 
 interface RouteState {
   tab: TabId;
@@ -79,81 +85,84 @@ export function App() {
     { id: "control", label: t.tabs.control },
   ];
 
+  const activeTabInfo = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+
   return (
-    <div className="h-screen flex flex-col bg-background text-foreground">
-      {/* Header */}
-      <header className="flex items-center justify-between px-5 h-12 border-b border-border bg-[#0b1920]/80 backdrop-blur-md shrink-0">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2.5">
-            <div className="w-[7px] h-[7px] rounded-full bg-primary" />
-            <span className="text-[13px] font-semibold text-foreground/90 tracking-tight">
-              Codebase Memory
-            </span>
-            {version && (
-              <span
-                className="translate-y-px text-[10px] font-mono text-foreground/30"
-                title="Server version"
+    <div className="h-screen flex bg-background text-foreground">
+      {/* Icon rail — persistent navigation */}
+      <nav className="w-[84px] shrink-0 bg-sidebar border-r border-border flex flex-col items-center py-5 gap-7">
+        <div className="w-[34px] h-[34px] rounded-[10px] bg-primary flex items-center justify-center font-serif font-bold text-[16px] text-primary-foreground">
+          C
+        </div>
+        <div className="flex flex-col gap-2.5">
+          {tabs.map((tab) => {
+            const Icon = TAB_ICONS[tab.id];
+            const disabled = tab.id === "graph" && !selectedProject;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => navigate(tab.id, tab.id === "stats" ? null : selectedProject)}
+                disabled={disabled}
+                title={disabled ? "Select a project first" : tab.label}
+                className={`w-[42px] h-[42px] rounded-xl flex items-center justify-center transition-all ${
+                  disabled
+                    ? "text-muted-foreground/30 cursor-not-allowed"
+                    : active
+                      ? "bg-primary/16 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
+                }`}
               >
+                <Icon size={18} strokeWidth={2} />
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Top bar */}
+        <header className="h-14 shrink-0 flex items-center justify-between px-7 border-b border-border">
+          <div className="flex items-baseline gap-2.5">
+            <span className="font-serif text-[16px] font-semibold">{activeTabInfo.label}</span>
+            {version && (
+              <span className="text-[10px] font-mono text-muted-foreground/70" title="Server version">
                 {version.startsWith("v") ? version : `v${version}`}
               </span>
             )}
           </div>
 
-          {/* Tabs inline in header */}
-          <nav className="flex items-center gap-0.5">
-            {tabs.map((tab) => {
-              const disabled = tab.id === "graph" && !selectedProject;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => navigate(tab.id, tab.id === "stats" ? null : selectedProject)}
-                  disabled={disabled}
-                  title={disabled ? "Select a project first" : undefined}
-                  className={`px-3 py-1 rounded-md text-[12px] font-medium transition-all ${
-                    disabled
-                      ? "text-muted-foreground/30 cursor-not-allowed"
-                      : activeTab === tab.id
-                        ? "bg-primary/15 text-primary"
-                        : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+          {selectedProject && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/[0.04] border border-border/60">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                {t.graph.selectedLabel}
+              </span>
+              <span className="text-[11px] text-primary font-mono truncate max-w-[300px]">
+                {selectedProject}
+              </span>
+              <button
+                onClick={() => navigate("stats", null)}
+                className="text-muted-foreground/60 hover:text-foreground text-[12px] ml-1 transition-colors"
+              >
+                ×
+              </button>
+            </div>
+          )}
+        </header>
 
-        {selectedProject && (
-          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/[0.04] border border-border/30">
-            <span className="text-[10px] text-foreground/30 uppercase tracking-wider">
-              {t.graph.selectedLabel}
-            </span>
-            <span className="text-[11px] text-primary font-mono truncate max-w-[300px]">
-              {selectedProject}
-            </span>
-            <button
-              onClick={() => navigate("stats", null)}
-              className="text-foreground/20 hover:text-foreground/50 text-[12px] ml-1 transition-colors"
-            >
-              ×
-            </button>
-          </div>
-        )}
-      </header>
-
-      {/* Content */}
-      <main className="flex-1 min-h-0">
-        {activeTab === "graph" ? (
-          <GraphTab project={selectedProject} />
-        ) : activeTab === "control" ? (
-          <ControlTab />
-        ) : (
-          <StatsTab
-            onSelectProject={(p) => navigate("graph", p)}
-          />
-        )}
-      </main>
+        {/* Content */}
+        <main className="flex-1 min-h-0">
+          {activeTab === "graph" ? (
+            <GraphTab project={selectedProject} />
+          ) : activeTab === "control" ? (
+            <ControlTab />
+          ) : (
+            <StatsTab
+              onSelectProject={(p) => navigate("graph", p)}
+            />
+          )}
+        </main>
+      </div>
     </div>
   );
 }
