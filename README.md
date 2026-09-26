@@ -65,8 +65,8 @@ los que faltan.
 ## La interfaz
 
 <p align="center">
-  <img src="docs/graph-ui-screenshot-projects.png" alt="Pestaña de Proyectos rediseñada, con tarjetas por proyecto y grid de tags" width="49%">
-  <img src="docs/graph-ui-screenshot.png" alt="Vista 3D del grafo de conocimiento con el look oscuro nuevo" width="49%">
+  <img src="docs/projects-view.png" alt="Pestaña de Proyectos rediseñada, con tarjetas por proyecto y grid de tags" width="49%">
+  <img src="docs/graph-view.png" alt="Vista 3D del grafo de conocimiento con el look oscuro nuevo" width="49%">
   <br>
   <em>Proyectos (izquierda) y la vista 3D del grafo (derecha), ambas con el rediseño de este fork</em>
 </p>
