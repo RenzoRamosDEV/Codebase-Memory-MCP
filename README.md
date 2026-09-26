@@ -42,9 +42,9 @@ código cada vez desde cero.
 **Este repo es mi fork personal** de
 [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp), con la
 interfaz de grafo (`graph-ui/`) rediseñada a mi gusto y una función que no traía el original:
-que la pestaña de Proyectos escanee sola una carpeta (`/home/renzo/Proyectos` por defecto) y
-me muestre ahí mismo qué repos ya están indexados y cuáles no, con un botón para indexar los
-que faltan.
+en la pestaña de Proyectos elijo una carpeta con el botón **Seleccionar carpeta** y ahí mismo
+aparece qué repos de esa carpeta ya están indexados y cuáles no, con un botón para indexar
+los que faltan.
 
 ## Para qué sirve
 
@@ -65,20 +65,21 @@ que faltan.
 ## La interfaz
 
 <p align="center">
-  <img src="docs/graph-ui-screenshot.png" alt="Vista 3D del grafo de conocimiento de Codebase Memory" width="800">
+  <img src="docs/graph-ui-screenshot-projects.png" alt="Pestaña de Proyectos rediseñada, con tarjetas por proyecto y grid de tags" width="49%">
+  <img src="docs/graph-ui-screenshot.png" alt="Vista 3D del grafo de conocimiento con el look oscuro nuevo" width="49%">
   <br>
-  <em>La vista 3D del grafo — cada nodo es una función/clase/archivo, cada arista una relación</em>
+  <em>Proyectos (izquierda) y la vista 3D del grafo (derecha), ambas con el rediseño de este fork</em>
 </p>
 
-> La captura de arriba es de la vista 3D en sí (sin cambios). Lo que sí rediseñé en este fork
-> es todo el resto de la interfaz — capturas nuevas pendientes, pero en resumen:
+Lo que cambié respecto al proyecto original:
 
 - **Look oscuro tipo "Claude Code"** — paleta slate/clay, tipografía Public Sans + Source
   Serif 4, riel de iconos a la izquierda en vez de tabs arriba.
-- **Pestaña de Proyectos con auto-descubrimiento** — escanea la carpeta configurada, y cada
-  repo que encuentra aparece como una tarjeta: si ya está indexado, con sus stats y un grid
-  de tags por tipo de nodo; si no, con un botón **Indexar** directo, sin pasar por ningún
-  diálogo.
+- **Pestaña de Proyectos con selector de carpeta** — botón **Seleccionar carpeta**: eliges
+  cualquier carpeta del sistema y cada repo que encuentra ahí aparece como una tarjeta; si ya
+  está indexado, con sus stats y un grid de tags por tipo de nodo; si no, con un botón
+  **Indexar** directo, sin pasar por ningún diálogo. La carpeta elegida se recuerda entre
+  sesiones.
 - **Ventanita de progreso** al indexar (`Indexando proyecto: NOMBRE`) en vez del aviso
   discreto de antes.
 - **Panel de filtros más ordenado** — "Missed files" y "Dead code" quedan colapsados por

@@ -426,6 +426,205 @@ function CreateIndexModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
+/* ── Select scan-root folder modal ──────────────────────── */
+
+function SelectRootModal({ onClose, onSelect }: { onClose: () => void; onSelect: (path: string) => void }) {
+  const [currentPath, setCurrentPath] = useState("");
+  const [dirs, setDirs] = useState<string[]>([]);
+  const [roots, setRoots] = useState<string[]>(["/"]);
+  const [parentPath, setParentPath] = useState("");
+  const [filter, setFilter] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+  const lastBrowsedRef = useRef<string>("");
+
+  const browse = useCallback(async (path?: string, opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      const q = path ? `?path=${encodeURIComponent(path)}` : "";
+      const res = await fetch(`/api/browse${q}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      lastBrowsedRef.current = data.path ?? "";
+      setCurrentPath(data.path ?? "");
+      setDirs((data.dirs ?? []).sort());
+      setRoots(data.roots ?? ["/"]);
+      setParentPath(data.parent ?? "/");
+    } catch (e) {
+      if (!silent) setError(e instanceof Error ? e.message : "No se pudo listar la carpeta");
+    }
+    finally { if (!silent) setLoading(false); }
+  }, []);
+
+  useEffect(() => { browse(); }, [browse]);
+  useEffect(() => { filterRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    if (!currentPath || currentPath === lastBrowsedRef.current) return;
+    if (!/^[A-Za-z]:/.test(currentPath.replace(/\\/g, "/"))) return;
+    const id = setTimeout(() => { void browse(currentPath, { silent: true }); }, 350);
+    return () => clearTimeout(id);
+  }, [currentPath, browse]);
+
+  const filteredDirs = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return dirs;
+    return dirs.filter((d) => d.toLowerCase().includes(q));
+  }, [dirs, filter]);
+
+  useEffect(() => { setActiveIndex(0); }, [filter, currentPath]);
+
+  const choose = (path = currentPath) => {
+    if (!path) return;
+    onSelect(path);
+    onClose();
+  };
+
+  const onFilterKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, Math.max(filteredDirs.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && filteredDirs.length > 0) {
+      e.preventDefault();
+      const dir = filteredDirs.length === 1 ? filteredDirs[0] : filteredDirs[activeIndex];
+      if (filteredDirs.length === 1) choose(joinPath(currentPath, dir));
+      else void browse(joinPath(currentPath, dir));
+    }
+  };
+
+  const displayPath = currentPath.replace(/\\/g, "/");
+  const segments = displayPath.split("/").filter(Boolean);
+  const isWinPath = /^[A-Za-z]:$/.test(segments[0] ?? "");
+  const crumbPath = (i: number): string => {
+    const parts = segments.slice(0, i + 1);
+    if (isWinPath) return parts.length === 1 ? `${parts[0]}/` : parts.join("/");
+    return "/" + parts.join("/");
+  };
+
+  const displayRoots = (() => {
+    if (!isWinPath) return roots;
+    const drives = Array.from(new Set(
+      roots.filter((r) => /^[A-Za-z]:[\\/]?$/.test(r)).map((r) => `${r[0].toUpperCase()}:/`),
+    ));
+    const curRoot = `${displayPath[0].toUpperCase()}:/`;
+    if (!drives.includes(curRoot)) drives.unshift(curRoot);
+    return drives;
+  })();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative bg-card border border-border/40 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col overflow-hidden" style={{ height: "min(82vh, 680px)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-3 shrink-0">
+          <h3 className="text-[15px] font-semibold text-foreground/90 mb-1">Selecciona una carpeta</h3>
+          <p className="text-[12px] text-foreground/30">Elige la carpeta donde guardas tus proyectos — se listarán todas las que tenga dentro.</p>
+        </div>
+
+        <div className="px-5 pb-3 flex items-center gap-2 shrink-0">
+          <input
+            ref={filterRef}
+            value={filter}
+            placeholder="Filtrar carpetas"
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={onFilterKeyDown}
+            className="flex-1 bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 py-2 text-[12px] text-foreground outline-none focus:border-primary/40 placeholder:text-foreground/20"
+          />
+          <div className="flex items-center gap-1">
+            {displayRoots.map((root) => (
+              <button
+                key={root}
+                onClick={() => browse(root)}
+                className="px-2.5 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[11px] text-foreground/45 font-mono transition-all"
+              >
+                {root}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="px-5 py-2 border-y border-border/20 flex items-center gap-0.5 overflow-x-auto text-[11px] shrink-0">
+          {!isWinPath && (
+            <button onClick={() => browse("/")} className="text-primary/60 hover:text-primary shrink-0 transition-colors">/</button>
+          )}
+          {segments.map((seg, i) => (
+            <span key={i} className="flex items-center gap-0.5 shrink-0">
+              {(i > 0 || !isWinPath) && <span className="text-foreground/15">/</span>}
+              <button
+                onClick={() => browse(crumbPath(i))}
+                className={`transition-colors ${i === segments.length - 1 ? "text-foreground/70 font-medium" : "text-primary/50 hover:text-primary"}`}
+              >
+                {seg}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-2 py-1">
+            {currentPath !== "/" && (
+              <button
+                onClick={() => browse(parentPath)}
+                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg hover:bg-white/[0.04] text-[12px] text-foreground/40 transition-colors"
+              >
+                <span className="text-foreground/20">↑</span>
+                <span>..</span>
+              </button>
+            )}
+            {loading ? (
+              <p className="text-foreground/20 text-[12px] text-center py-8">Cargando…</p>
+            ) : filteredDirs.length === 0 ? (
+              <p className="text-foreground/15 text-[12px] text-center py-8">Sin subcarpetas</p>
+            ) : (
+              filteredDirs.map((d, i) => (
+                <div
+                  key={d}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] transition-colors group ${
+                    i === activeIndex ? "bg-white/[0.05]" : "hover:bg-white/[0.04]"
+                  }`}
+                >
+                  <button
+                    onClick={() => browse(joinPath(currentPath, d))}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-foreground/60"
+                  >
+                    <span className="text-foreground/20 group-hover:text-foreground/40">/</span>
+                    <span className="truncate">{d}</span>
+                  </button>
+                  <button
+                    onClick={() => choose(joinPath(currentPath, d))}
+                    className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 px-2 py-1 rounded-md bg-primary/15 hover:bg-primary/25 text-primary text-[10px] font-medium transition-all"
+                  >
+                    Usar esta carpeta
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </ScrollArea>
+
+        <div className="px-5 py-4 border-t border-border/20 shrink-0">
+          {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 mb-3"><p className="text-destructive text-[11px]">{error}</p></div>}
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-foreground/25 font-mono truncate max-w-[250px]">{currentPath}</p>
+            <div className="flex gap-2 shrink-0">
+              <button onClick={onClose} className="px-3 py-2 rounded-lg text-[12px] text-foreground/40 hover:bg-white/[0.04] font-medium transition-all">Cancelar</button>
+              <button onClick={() => choose()} disabled={!currentPath} className="px-4 py-2 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary text-[12px] font-medium transition-all disabled:opacity-30">
+                Usar esta carpeta
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Index Progress ─────────────────────────────────────── */
 
 function basename(path: string): string {
@@ -527,11 +726,19 @@ export function IndexProgress({ onDone, pendingLabel }: { onDone: () => void; pe
   );
 }
 
-/* ── Folder scan: everything under PROJECTS_ROOT, indexed or not ── */
+/* ── Folder scan: everything under a user-chosen root, indexed or not ── */
 
-/* Personal setting: the folder this fork always scans for repositories.
- * Edit this if your projects live somewhere else. */
-const PROJECTS_ROOT = "/home/renzo/Proyectos";
+const SCAN_ROOT_KEY = "cbm-scan-root";
+
+function loadScanRoot(): string | null {
+  try { return localStorage.getItem(SCAN_ROOT_KEY); } catch { return null; }
+}
+function saveScanRoot(path: string | null) {
+  try {
+    if (path) localStorage.setItem(SCAN_ROOT_KEY, path);
+    else localStorage.removeItem(SCAN_ROOT_KEY);
+  } catch { /* ignore */ }
+}
 
 type ProjectEntry = { project: Project; schema: SchemaInfo | null };
 
@@ -602,7 +809,7 @@ function IndexedRow({
   );
 }
 
-/* One card: a folder under PROJECTS_ROOT that has not been indexed yet. */
+/* One card: a folder under the scan root that has not been indexed yet. */
 function UnindexedRow({
   name,
   fullPath,
@@ -643,29 +850,38 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
   const t = useUiMessages();
   const { projects, loading, error, refresh } = useProjects();
   const [showModal, setShowModal] = useState(false);
+  const [showSelectRoot, setShowSelectRoot] = useState(false);
   const [indexing, setIndexing] = useState(false);
 
+  const [scanRoot, setScanRoot] = useState<string | null>(() => loadScanRoot());
   const [scanDirs, setScanDirs] = useState<string[] | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [scanLoading, setScanLoading] = useState(true);
+  const [scanLoading, setScanLoading] = useState(false);
   const [scanVersion, setScanVersion] = useState(0);
   const [indexingPath, setIndexingPath] = useState<string | null>(null);
   const [indexingLabel, setIndexingLabel] = useState<string | null>(null);
 
+  const chooseScanRoot = useCallback((path: string) => {
+    setScanRoot(path);
+    saveScanRoot(path);
+    setScanDirs(null);
+  }, []);
+
   useEffect(() => {
+    if (!scanRoot) { setScanDirs(null); setScanError(null); return; }
     let cancelled = false;
     setScanLoading(true);
-    fetch(`/api/browse?path=${encodeURIComponent(PROJECTS_ROOT)}`)
+    fetch(`/api/browse?path=${encodeURIComponent(scanRoot)}`)
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
         if (d.error) { setScanError(d.error); setScanDirs([]); }
         else { setScanError(null); setScanDirs((d.dirs ?? []).sort()); }
       })
-      .catch(() => { if (!cancelled) { setScanError(`No se pudo leer ${PROJECTS_ROOT}`); setScanDirs([]); } })
+      .catch(() => { if (!cancelled) { setScanError(`No se pudo leer ${scanRoot}`); setScanDirs([]); } })
       .finally(() => { if (!cancelled) setScanLoading(false); });
     return () => { cancelled = true; };
-  }, [scanVersion]);
+  }, [scanRoot, scanVersion]);
 
   const indexedByPath = useMemo(() => {
     const m = new Map<string, ProjectEntry>();
@@ -674,11 +890,12 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
   }, [projects]);
 
   const folderEntries = useMemo(() => {
+    if (!scanRoot) return [];
     return (scanDirs ?? []).map((name) => {
-      const fullPath = joinPath(PROJECTS_ROOT, name);
+      const fullPath = joinPath(scanRoot, name);
       return { name, fullPath, indexed: indexedByPath.get(normalizePath(fullPath)) ?? null };
     });
-  }, [scanDirs, indexedByPath]);
+  }, [scanRoot, scanDirs, indexedByPath]);
 
   const otherIndexed = useMemo(() => {
     const scannedPaths = new Set(folderEntries.map((f) => normalizePath(f.fullPath)));
@@ -744,42 +961,62 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
           />
         )}
 
-        {/* Everything found under PROJECTS_ROOT, indexed or not */}
+        {/* Everything found under the chosen scan root, indexed or not */}
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-serif text-[16px] font-semibold">
-            Proyectos en <span className="font-mono text-[13px] text-muted-foreground">{PROJECTS_ROOT}</span>
-          </h2>
+          {scanRoot ? (
+            <h2 className="font-serif text-[16px] font-semibold">
+              Proyectos en <span className="font-mono text-[13px] text-muted-foreground">{scanRoot}</span>
+            </h2>
+          ) : (
+            <h2 className="font-serif text-[16px] font-semibold">Proyectos</h2>
+          )}
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowModal(true)} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-muted-foreground font-medium transition-all">+ {t.index.newIndex}</button>
-            <button onClick={() => setScanVersion((v) => v + 1)} disabled={scanLoading} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-muted-foreground font-medium transition-all disabled:opacity-30">
-              {scanLoading ? "..." : t.common.refresh}
+            <button onClick={() => setShowSelectRoot(true)} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-muted-foreground font-medium transition-all">
+              {scanRoot ? "Cambiar carpeta" : "Seleccionar carpeta"}
             </button>
+            <button onClick={() => setShowModal(true)} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-muted-foreground font-medium transition-all">+ {t.index.newIndex}</button>
+            {scanRoot && (
+              <button onClick={() => setScanVersion((v) => v + 1)} disabled={scanLoading} className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[12px] text-muted-foreground font-medium transition-all disabled:opacity-30">
+                {scanLoading ? "..." : t.common.refresh}
+              </button>
+            )}
           </div>
         </div>
 
-        {scanError && (
+        {!scanRoot && (
+          <div className="rounded-2xl border border-dashed border-border bg-card/50 p-8 mb-10 text-center">
+            <p className="text-muted-foreground text-[13px] mb-3">Elige una carpeta y aquí aparecerán todos los proyectos que tenga dentro, indexados o no.</p>
+            <button onClick={() => setShowSelectRoot(true)} className="px-4 py-2 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-semibold transition-all">
+              Seleccionar carpeta
+            </button>
+          </div>
+        )}
+
+        {scanRoot && scanError && (
           <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 mb-6"><p className="text-destructive text-[13px]">{scanError}</p></div>
         )}
 
-        {!scanLoading && folderEntries.length === 0 && !scanError && (
-          <p className="text-muted-foreground/60 text-[12px] py-6">No hay carpetas en {PROJECTS_ROOT}</p>
+        {scanRoot && !scanLoading && folderEntries.length === 0 && !scanError && (
+          <p className="text-muted-foreground/60 text-[12px] py-6">No hay carpetas en {scanRoot}</p>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-10">
-          {folderEntries.map((entry) =>
-            entry.indexed ? (
-              <IndexedRow key={entry.fullPath} p={entry.indexed} onSelectProject={onSelectProject} onDelete={deleteProject} />
-            ) : (
-              <UnindexedRow
-                key={entry.fullPath}
-                name={entry.name}
-                fullPath={entry.fullPath}
-                indexing={indexingPath === entry.fullPath}
-                onIndex={() => indexFolder(entry.fullPath, entry.name)}
-              />
-            ),
-          )}
-        </div>
+        {scanRoot && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-10">
+            {folderEntries.map((entry) =>
+              entry.indexed ? (
+                <IndexedRow key={entry.fullPath} p={entry.indexed} onSelectProject={onSelectProject} onDelete={deleteProject} />
+              ) : (
+                <UnindexedRow
+                  key={entry.fullPath}
+                  name={entry.name}
+                  fullPath={entry.fullPath}
+                  indexing={indexingPath === entry.fullPath}
+                  onIndex={() => indexFolder(entry.fullPath, entry.name)}
+                />
+              ),
+            )}
+          </div>
+        )}
 
         {error && <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 mb-6"><p className="text-destructive text-[13px]">{error}</p></div>}
 
@@ -794,7 +1031,7 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
           </>
         )}
 
-        {!loading && projects.length === 0 && folderEntries.length === 0 && !error && !scanError && (
+        {scanRoot && !loading && projects.length === 0 && folderEntries.length === 0 && !error && !scanError && (
           <div className="text-center py-20">
             <p className="text-foreground/25 text-[13px] mb-2">{t.projects.noIndexedProjects}</p>
             <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[12px] font-medium transition-all">{t.projects.indexFirstRepository}</button>
@@ -805,6 +1042,12 @@ export function StatsTab({ onSelectProject }: StatsTabProps) {
         <CreateIndexModal
           onClose={() => setShowModal(false)}
           onCreated={(label) => { setIndexingLabel(label); setIndexing(true); refresh(); setScanVersion((v) => v + 1); }}
+        />
+      )}
+      {showSelectRoot && (
+        <SelectRootModal
+          onClose={() => setShowSelectRoot(false)}
+          onSelect={chooseScanRoot}
         />
       )}
     </ScrollArea>
